@@ -1,0 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  --navy: #16283D;
+  --navy-soft: #1F3A57;
+  --paper: #F5F2EC;
+  --paper-2: #FFFFFF;
+  --line: #E4E0D6;
+  --slate: #5B6472;
+  --brass: #B8863B;
+  --brass-text: #8C6423;
+  --green: #4C7A63;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Inter', sans-serif; color: var(--navy); background: var(--paper); }
+h1, h2, h3 { font-family: 'Space Grotesk', sans-serif; }
+
+/* ---- Layout ---- */
+.layout-root {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: 64px 1fr auto;
+  grid-template-areas:
+    "sidebar header"
+    "sidebar content"
+    "sidebar footer";
+  min-height: 100vh;
+}
+@media (max-width: 860px) {
+  .layout-root { grid-template-columns: 1fr; }
+  .sidebar { position: fixed; inset: 0 30% 0 0; z-index: 20; transform: translateX(-100%); transition: transform .2s ease; }
+  .sidebar[data-open="true"] { transform: translateX(0); }
+}
+
+.header { grid-area: header; }
+.sidebar { grid-area: sidebar; }
+.content { grid-area: content; padding: 28px; }
+.footer { grid-area: footer; }

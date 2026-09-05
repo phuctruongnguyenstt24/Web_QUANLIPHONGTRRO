@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@theme {
+  --color-navy: #16283D;
+  --color-navy-soft: #1F3A57;
+  --color-paper: #F5F2EC;
+  --color-line: #E4E0D6;
+  --color-slate-ink: #5B6472;
+  --color-brass: #B8863B;
+  --color-brass-text: #8C6423;
+  --color-moss: #4C7A63;
+  --color-danger: #B3432E;
+
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'Inter', sans-serif;
+}
+
+body { @apply font-body text-navy bg-paper m-0; }
