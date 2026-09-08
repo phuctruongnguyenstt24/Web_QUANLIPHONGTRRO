@@ -2,10 +2,15 @@ const mongoose = require('mongoose');
 
 const roomSchema = new mongoose.Schema(
   {
+        branch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Branch',
+      required: [true, 'Phòng phải thuộc một chi nhánh'],
+      index: true,
+    },
     roomNumber: {
       type: String,
       required: [true, 'Vui lòng nhập số phòng'],
-      unique: true,
       trim: true,
     },
     floor: { type: Number, default: 1, min: 0 },
@@ -34,6 +39,8 @@ const roomSchema = new mongoose.Schema(
 );
 
 roomSchema.index({ status: 1, floor: 1 });
+// XOÁ unique: true ở roomNumber, thay bằng index ghép ở cuối file
+roomSchema.index({ branch: 1, roomNumber: 1 }, { unique: true });
 
 // Trạng thái luôn khớp với số người thuê thực tế,
 // tránh việc phòng còn người mà lại hiển thị là trống.

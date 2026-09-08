@@ -11,7 +11,7 @@ const {
   forgotPassword,
   resetPassword,
   changePassword,
-  createAdmin,
+  createOwner,
 } = require('../controllers/Authcontroller');
 
 const { protect, requireRole } = require('../middleware/Auth');
@@ -42,6 +42,7 @@ router.put('/me', protect, updateMe);
 router.put('/change-password', protect, changePassword);
 
 /* ---------- Route chỉ dành cho admin ---------- */
-router.post('/create-admin', protect, requireRole('admin'), createAdmin);
+
+router.post('/create-owner', protect, requireRole('owner'), createOwner);
 
 module.exports = router;

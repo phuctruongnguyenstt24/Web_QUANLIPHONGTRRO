@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useBranch } from '../../context/BranchContext';
 import api from '../../services/api';
 import {
   inputClass,
@@ -49,6 +50,8 @@ export default function RoomList() {
   const [filter, setFilter] = useState('');
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
+
+ 
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -352,6 +355,8 @@ export default function RoomList() {
 /* ---------- Modal thêm / sửa phòng ---------- */
 function RoomFormModal({ room, onClose, onSaved }) {
   const isEdit = !!room;
+   const { branches, activeBranchId, canSwitchBranch } = useBranch();
+  const [branchId, setBranchId] = useState(room?.branch?.id || activeBranchId || '');
   const [form, setForm] = useState({
     roomNumber: room?.roomNumber || '',
     floor: room?.floor ?? 1,
@@ -403,6 +408,7 @@ function RoomFormModal({ room, onClose, onSaved }) {
         waterPrice: Number(form.waterPrice),
         amenities: form.amenities,
         description: form.description.trim(),
+        branch: branchId || undefined
       };
 
       if (isEdit) {
@@ -432,6 +438,17 @@ function RoomFormModal({ room, onClose, onSaved }) {
         <form onSubmit={handleSubmit}>
           <div className="mb-4 grid gap-4 sm:grid-cols-3">
             <div>
+            {canSwitchBranch && !isEdit && (
+  <div className="mb-4">
+    <label className={labelClass} htmlFor="rm-branch">Chi nhánh</label>
+    <select id="rm-branch" className={inputClass} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+      <option value="">— Chọn chi nhánh —</option>
+      {branches.filter((b) => b.isActive).map((b) => (
+        <option key={b.id} value={b.id}>{b.name}</option>
+      ))}
+    </select>
+  </div>
+)}
               <label className={labelClass} htmlFor="rm-number">Số phòng</label>
               <input
                 id="rm-number"

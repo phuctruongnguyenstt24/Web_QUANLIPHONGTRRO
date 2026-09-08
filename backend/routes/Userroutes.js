@@ -13,14 +13,15 @@ const {
 } = require('../controllers/userController');
 
 const { protect, requireRole } = require('../middleware/Auth');
+const { branchScope, resolveBranchForCreate } = require('../middleware/branchScope');
 
-// Toàn bộ route trong file này chỉ dành cho admin.
-// Đặt ở đây một lần thay vì lặp lại trên từng dòng.
-router.use(protect, requireRole('admin'));
+// Toàn bộ route này dành cho owner và manager.
+// branchScope giới hạn manager chỉ thấy chi nhánh của mình.
+router.use(protect, requireRole('owner', 'manager'), branchScope);
 
 router.route('/')
   .get(getUsers)
-  .post(createUser);
+  .post(resolveBranchForCreate, createUser);
 
 router.route('/:id')
   .get(getUser)

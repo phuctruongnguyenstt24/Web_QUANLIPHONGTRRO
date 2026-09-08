@@ -24,5 +24,9 @@ app.use('/api/auth', authRoutes);
 const roomRoutes = require('./routes/roomRoutes');
 app.use('/api/rooms', roomRoutes);
 
+app.use('/api/branches', require('./routes/branchRoutes'));
+
+app.use('/api/invoices', require('./routes/Invoiceroute'));
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server chạy tại http://localhost:${PORT}`));

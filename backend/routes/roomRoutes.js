@@ -13,25 +13,25 @@ const {
 } = require('../controllers/Roomcontroller');
 
 const { protect, requireRole } = require('../middleware/Auth');
+const { branchScope, resolveBranchForCreate } = require('../middleware/branchScope');
 
-// Mọi route đều cần đăng nhập
-router.use(protect);
+// protect trước (xác định người dùng), branchScope sau (xác định phạm vi).
+// Thứ tự này bắt buộc: branchScope đọc req.user do protect gắn vào.
+router.use(protect, branchScope);
 
-// Đặt TRƯỚC /:id, nếu không Express sẽ hiểu "available-tenants" là một id
-router.get('/available-tenants', requireRole('admin'), getAvailableTenants);
+// Đặt TRƯỚC /:id, nếu không Express hiểu "available-tenants" là một id
+router.get('/available-tenants', requireRole('owner', 'manager'), getAvailableTenants);
 
-// Người thuê được xem danh sách phòng (để biết phòng trống);
-// thêm, sửa, xoá thì chỉ admin.
 router.route('/')
   .get(getRooms)
-  .post(requireRole('admin'), createRoom);
+  .post(requireRole('owner', 'manager'), resolveBranchForCreate, createRoom);
 
 router.route('/:id')
   .get(getRoom)
-  .put(requireRole('admin'), updateRoom)
-  .delete(requireRole('admin'), deleteRoom);
+  .put(requireRole('owner', 'manager'), updateRoom)
+  .delete(requireRole('owner', 'manager'), deleteRoom);
 
-router.post('/:id/tenants', requireRole('admin'), assignTenant);
-router.delete('/:id/tenants/:tenantId', requireRole('admin'), removeTenant);
+router.post('/:id/tenants', requireRole('owner', 'manager'), assignTenant);
+router.delete('/:id/tenants/:tenantId', requireRole('owner', 'manager'), removeTenant);
 
 module.exports = router;

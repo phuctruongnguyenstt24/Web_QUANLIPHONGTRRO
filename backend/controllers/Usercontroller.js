@@ -1,4 +1,6 @@
 const User = require('../models/User');
+const Branch = require('../models/Branch');
+const { canAccessBranch } = require('../middleware/branchScope');
 
 function publicUser(user) {
   return {
@@ -10,25 +12,28 @@ function publicUser(user) {
     status: user.status,
     isActive: user.isActive,
     idCard: user.idCard || null,
-    room: user.room || null,
+    branch: user.branch?._id
+      ? { id: user.branch._id, name: user.branch.name, code: user.branch.code }
+      : user.branch || null,
+    room: user.room?._id ? { id: user.room._id, roomNumber: user.room.roomNumber } : user.room || null,
     rejectionReason: user.rejectionReason || null,
     lastLoginAt: user.lastLoginAt,
     loginCount: user.loginCount,
     approvedAt: user.approvedAt,
-    approvedBy: user.approvedBy || null,
     createdAt: user.createdAt,
   };
 }
 
 /**
  * GET /api/users
- * Query: ?status=pending&role=tenant&search=abc&page=1&limit=20
+ * Query: ?status=pending&role=tenant&search=abc&branch=<id>&page=1&limit=20
  */
 exports.getUsers = async (req, res) => {
   try {
     const { status, role, search, page = 1, limit = 20 } = req.query;
 
-    const filter = {};
+    // Phạm vi chi nhánh áp trước mọi bộ lọc khác
+    const filter = { ...req.branchFilter };
     if (status) filter.status = status;
     if (role) filter.role = role;
     if (search) {
@@ -36,23 +41,29 @@ exports.getUsers = async (req, res) => {
       filter.$or = [{ name: rx }, { email: rx }, { phone: rx }];
     }
 
+    // Manager không được xem tài khoản owner
+    if (req.user.role === 'manager') {
+      filter.role = role && role !== 'owner' ? role : { $in: ['tenant', 'manager'] };
+    }
+
     const skip = (Number(page) - 1) * Number(limit);
 
     const [users, total, pendingCount] = await Promise.all([
       User.find(filter)
         .populate('room', 'roomNumber')
-        .populate('approvedBy', 'name')
+        .populate('branch', 'name code')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit)),
       User.countDocuments(filter),
-      User.countDocuments({ status: 'pending' }),
+      // Số chờ duyệt cũng theo phạm vi chi nhánh
+      User.countDocuments({ ...req.branchFilter, status: 'pending', role: 'tenant' }),
     ]);
 
     res.json({
       users: users.map(publicUser),
       total,
-      pendingCount, // để hiện chấm đỏ trên menu
+      pendingCount,
       page: Number(page),
       totalPages: Math.ceil(total / Number(limit)) || 1,
     });
@@ -66,8 +77,13 @@ exports.getUser = async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
       .populate('room', 'roomNumber price')
-      .populate('approvedBy', 'name');
+      .populate('branch', 'name code');
+
     if (!user) return res.status(404).json({ message: 'Không tìm thấy tài khoản' });
+    if (!canAccessBranch(req, user)) {
+      return res.status(403).json({ message: 'Tài khoản này không thuộc chi nhánh của bạn' });
+    }
+
     res.json({ user: publicUser(user) });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -76,11 +92,11 @@ exports.getUser = async (req, res) => {
 
 /**
  * POST /api/users
- * Admin tạo tài khoản người thuê -> duyệt sẵn, không phải chờ.
+ * Tạo tài khoản người thuê, duyệt sẵn.
  */
 exports.createUser = async (req, res) => {
   try {
-    const { name, email, phone, password, idCard, room, role = 'tenant' } = req.body;
+    const { name, email, phone, password, idCard, role = 'tenant' } = req.body || {};
 
     if (!name || !password) {
       return res.status(400).json({ message: 'Vui lòng nhập họ tên và mật khẩu' });
@@ -88,9 +104,18 @@ exports.createUser = async (req, res) => {
     if (!email && !phone) {
       return res.status(400).json({ message: 'Vui lòng nhập email hoặc số điện thoại' });
     }
-    if (!['admin', 'tenant'].includes(role)) {
+
+    // Manager chỉ được tạo tài khoản người thuê.
+    // Nếu bỏ kiểm tra này, manager có thể tự tạo thêm owner cho mình.
+    if (req.user.role === 'manager' && role !== 'tenant') {
+      return res.status(403).json({ message: 'Bạn chỉ được tạo tài khoản người thuê' });
+    }
+    if (!['tenant', 'manager'].includes(role)) {
       return res.status(400).json({ message: 'Vai trò không hợp lệ' });
     }
+
+    const branch = await Branch.findById(req.targetBranch);
+    if (!branch) return res.status(404).json({ message: 'Không tìm thấy chi nhánh' });
 
     const duplicate = await User.findOne({
       $or: [email ? { email: email.toLowerCase() } : null, phone ? { phone } : null].filter(Boolean),
@@ -105,14 +130,15 @@ exports.createUser = async (req, res) => {
       phone: phone || undefined,
       password,
       idCard,
-      room: room || null,
       role,
+      branch: req.targetBranch, // từ middleware, không lấy thẳng từ req.body
       authProvider: 'local',
-      status: 'approved', // admin tạo thì duyệt luôn
+      status: 'approved',
       approvedBy: req.user.id,
       approvedAt: new Date(),
     });
 
+    await user.populate('branch', 'name code');
     res.status(201).json({ user: publicUser(user) });
   } catch (err) {
     if (err.code === 11000) {
@@ -122,18 +148,21 @@ exports.createUser = async (req, res) => {
   }
 };
 
-/**
- * PUT /api/users/:id
- * Không cho sửa password qua route này (dùng reset password riêng).
- */
+/** PUT /api/users/:id */
 exports.updateUser = async (req, res) => {
   try {
-    const { name, email, phone, idCard, room, role, isActive } = req.body;
+    const { name, email, phone, idCard, role, isActive, branch } = req.body || {};
 
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Không tìm thấy tài khoản' });
+    if (!canAccessBranch(req, user)) {
+      return res.status(403).json({ message: 'Tài khoản này không thuộc chi nhánh của bạn' });
+    }
+    if (user.role === 'owner' && req.user.role !== 'owner') {
+      return res.status(403).json({ message: 'Không thể sửa tài khoản chủ hệ thống' });
+    }
 
-    // Không cho admin tự hạ quyền hoặc tự khoá chính mình
+    // Không tự hạ quyền hoặc tự khoá chính mình
     if (user._id.toString() === req.user.id.toString()) {
       if (role && role !== user.role) {
         return res.status(400).json({ message: 'Không thể tự thay đổi vai trò của chính mình' });
@@ -143,15 +172,36 @@ exports.updateUser = async (req, res) => {
       }
     }
 
+    // Chuyển tài khoản sang chi nhánh khác: chỉ owner, và phải chưa có phòng
+    if (branch && branch !== user.branch?.toString()) {
+      if (req.user.role !== 'owner') {
+        return res.status(403).json({ message: 'Chỉ chủ hệ thống mới chuyển được tài khoản sang chi nhánh khác' });
+      }
+      if (user.room) {
+        return res.status(400).json({ message: 'Người này đang thuê phòng, hãy chuyển họ ra khỏi phòng trước' });
+      }
+      user.branch = branch;
+    }
+
+    // Chỉ owner mới đổi được vai trò
+    if (role !== undefined) {
+      if (req.user.role !== 'owner') {
+        return res.status(403).json({ message: 'Chỉ chủ hệ thống mới thay đổi được vai trò' });
+      }
+      user.role = role;
+    }
+
     if (name !== undefined) user.name = name;
     if (email !== undefined) user.email = email ? email.toLowerCase() : undefined;
     if (phone !== undefined) user.phone = phone || undefined;
     if (idCard !== undefined) user.idCard = idCard;
-    if (room !== undefined) user.room = room || null;
-    if (role !== undefined) user.role = role;
     if (isActive !== undefined) user.isActive = isActive;
 
     await user.save();
+    await user.populate([
+      { path: 'branch', select: 'name code' },
+      { path: 'room', select: 'roomNumber' },
+    ]);
     res.json({ user: publicUser(user) });
   } catch (err) {
     if (err.code === 11000) {
@@ -161,40 +211,50 @@ exports.updateUser = async (req, res) => {
   }
 };
 
-/**
- * PATCH /api/users/:id/approve
- * Phê duyệt tài khoản đăng ký.
- */
+/** PATCH /api/users/:id/approve */
 exports.approveUser = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Không tìm thấy tài khoản' });
+    if (!canAccessBranch(req, user)) {
+      return res.status(403).json({ message: 'Tài khoản này không thuộc chi nhánh của bạn' });
+    }
     if (user.status === 'approved') {
       return res.status(400).json({ message: 'Tài khoản này đã được duyệt' });
+    }
+
+    // Người đăng ký tự do chưa có chi nhánh, gán khi duyệt
+    if (!user.branch) {
+      const target = req.body?.branch || req.user.branch;
+      if (!target) {
+        return res.status(400).json({ message: 'Vui lòng chọn chi nhánh cho tài khoản này' });
+      }
+      user.branch = target;
     }
 
     user.status = 'approved';
     user.approvedBy = req.user.id;
     user.approvedAt = new Date();
     user.rejectionReason = undefined;
-    if (req.body?.room) user.room = req.body.room;
 
     await user.save({ validateBeforeSave: false });
+    await user.populate('branch', 'name code');
+
     res.json({ message: 'Đã phê duyệt tài khoản', user: publicUser(user) });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
 };
 
-/**
- * PATCH /api/users/:id/reject
- * Body: { reason }
- */
+/** PATCH /api/users/:id/reject */
 exports.rejectUser = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Không tìm thấy tài khoản' });
-    if (user.role === 'admin') {
+    if (!canAccessBranch(req, user)) {
+      return res.status(403).json({ message: 'Tài khoản này không thuộc chi nhánh của bạn' });
+    }
+    if (['owner', 'manager'].includes(user.role)) {
       return res.status(400).json({ message: 'Không thể từ chối tài khoản quản trị' });
     }
 
@@ -210,24 +270,31 @@ exports.rejectUser = async (req, res) => {
   }
 };
 
-/**
- * DELETE /api/users/:id
- */
+/** DELETE /api/users/:id */
 exports.deleteUser = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Không tìm thấy tài khoản' });
+    if (!canAccessBranch(req, user)) {
+      return res.status(403).json({ message: 'Tài khoản này không thuộc chi nhánh của bạn' });
+    }
 
     if (user._id.toString() === req.user.id.toString()) {
       return res.status(400).json({ message: 'Không thể xoá tài khoản của chính mình' });
     }
-
-    // Giữ lại ít nhất một admin trong hệ thống
-    if (user.role === 'admin') {
-      const adminCount = await User.countDocuments({ role: 'admin' });
-      if (adminCount <= 1) {
-        return res.status(400).json({ message: 'Phải còn ít nhất một tài khoản quản trị' });
+    if (user.role === 'owner') {
+      const ownerCount = await User.countDocuments({ role: 'owner' });
+      if (ownerCount <= 1) {
+        return res.status(400).json({ message: 'Phải còn ít nhất một tài khoản chủ hệ thống' });
       }
+      if (req.user.role !== 'owner') {
+        return res.status(403).json({ message: 'Không thể xoá tài khoản chủ hệ thống' });
+      }
+    }
+    if (user.room) {
+      return res.status(400).json({
+        message: 'Người này đang thuê phòng. Hãy chuyển họ ra khỏi phòng trước khi xoá.',
+      });
     }
 
     await user.deleteOne();
@@ -237,19 +304,22 @@ exports.deleteUser = async (req, res) => {
   }
 };
 
-/**
- * PATCH /api/users/:id/reset-password
- * Admin đặt lại mật khẩu hộ người thuê khi họ quên.
- */
+/** PATCH /api/users/:id/reset-password */
 exports.resetUserPassword = async (req, res) => {
   try {
-    const { newPassword } = req.body;
+    const { newPassword } = req.body || {};
     if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 6 ký tự' });
     }
 
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Không tìm thấy tài khoản' });
+    if (!canAccessBranch(req, user)) {
+      return res.status(403).json({ message: 'Tài khoản này không thuộc chi nhánh của bạn' });
+    }
+    if (user.role === 'owner' && req.user.role !== 'owner') {
+      return res.status(403).json({ message: 'Không thể đặt lại mật khẩu của chủ hệ thống' });
+    }
 
     user.password = newPassword;
     await user.save();

@@ -45,14 +45,18 @@ const userSchema = new mongoose.Schema(
         },
 
         // Phân quyền
-        role: {
-            type: String,
-            enum: {
-                values: ['admin', 'tenant'],
-                message: 'Vai trò chỉ có thể là admin hoặc tenant',
-            },
-            default: 'tenant',
-        },
+          role: {
+      type: String,
+      enum: {
+        values: ['owner', 'manager', 'tenant'],
+        message: 'Vai trò không hợp lệ',
+      },
+      default: 'tenant',
+    },
+
+    // Chi nhánh mà tài khoản này thuộc về.
+    // owner: null (thấy tất cả). manager & tenant: bắt buộc có.
+    branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', default: null },
 
         // Thông tin bổ sung cho người thuê
         idCard: {
@@ -96,7 +100,7 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ role: 1 });
 userSchema.index({ room: 1 });
 userSchema.index({ status: 1, createdAt: -1 });
-
+userSchema.index({ branch: 1, role: 1 });
 /* ---------- Virtual: định danh đăng nhập hiển thị ---------- */
 userSchema.virtual('loginIdentifier').get(function () {
     return this.email || this.phone;

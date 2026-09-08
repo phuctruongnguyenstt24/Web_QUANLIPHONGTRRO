@@ -54,7 +54,7 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
 
-  const base = isAdmin ? '/admin' : '/toi';
+  const base = isStaff ? '/admin' : '/toi';
 
   // Lưu ngay khi thay đổi, không cần bấm nút Lưu
   useEffect(() => {

@@ -6,8 +6,8 @@ const User = require('../models/User');
 
 // Tạo JWT. Role LẤY TỪ DB, không bao giờ lấy từ req.body.
 function signToken(user) {
-  return jwt.sign(
-    { id: user._id, role: user.role },
+    return jwt.sign(
+    { id: user._id, role: user.role, branch: user.branch },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRE || '7d' }
   );
@@ -16,16 +16,21 @@ function signToken(user) {
 // Định dạng dữ liệu người dùng trả về cho client (không kèm mật khẩu)
 function publicUser(user) {
   return {
-    id: user._id,
+      id: user._id,
     name: user.name,
     email: user.email || null,
     phone: user.phone || null,
     role: user.role,
+    status: user.status,
+    branch: user.branch?._id
+      ? { id: user.branch._id, name: user.branch.name, code: user.branch.code }
+      : user.branch || null,
     avatar: user.avatar || null,
     room: user.room || null,
     idCard: user.idCard || null,
     dateOfBirth: user.dateOfBirth || null,
     address: user.address || null,
+    authProvider: user.authProvider,
     createdAt: user.createdAt,
     lastLoginAt: user.lastLoginAt,
   };
@@ -108,10 +113,13 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Ghi nhận thời gian truy cập
+       // Ghi nhận thời gian truy cập
     user.lastLoginAt = new Date();
     user.loginCount += 1;
     await user.save({ validateBeforeSave: false });
+
+    // Lấy thông tin chi nhánh để frontend hiển thị được tên
+    await user.populate('branch', 'name code');
 
     res.json({
       token: signToken(user),
@@ -208,7 +216,9 @@ exports.googleLogin = async (req, res) => {
  */
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).populate('room', 'roomNumber price status');
+         const user = await User.findById(req.user.id)
+      .populate('room', 'roomNumber price status')
+      .populate('branch', 'name code');
     if (!user) return res.status(404).json({ message: 'Không tìm thấy tài khoản' });
     res.json({ user: publicUser(user) });
   } catch (err) {
@@ -338,11 +348,12 @@ exports.changePassword = async (req, res) => {
   }
 };
 
+ 
 /**
- * POST /api/auth/create-admin
- * Tạo tài khoản admin. Chỉ admin hiện có mới được gọi (protect + requireRole('admin')).
+ * POST /api/auth/create-owner
+ * Tạo tài khoản chủ hệ thống. Chỉ owner hiện có mới được gọi.
  */
-exports.createAdmin = async (req, res) => {
+exports.createOwner = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
     if (!name || !password || (!email && !phone)) {
@@ -354,11 +365,12 @@ exports.createAdmin = async (req, res) => {
       email: email ? email.toLowerCase() : undefined,
       phone: phone || undefined,
       password,
-      role: 'admin',
+      role: 'owner',
+      branch: null,        // owner không thuộc chi nhánh nào
       authProvider: 'local',
-      status: 'approved',           // thêm
-      approvedBy: req.user.id,      // thêm
-      approvedAt: new Date(),       // thêm
+      status: 'approved',
+      approvedBy: req.user.id,
+      approvedAt: new Date(),
     });
 
     res.status(201).json({ user: publicUser(user) });

@@ -29,7 +29,12 @@ exports.protect = async (req, res, next) => {
       return res.status(403).json({ message: 'Tài khoản đã bị vô hiệu hoá' });
     }
 
-    req.user = { id: user._id, role: user.role, name: user.name };
+ req.user = {
+      id: user._id,
+      role: user.role,
+      name: user.name,
+      branch: user.branch,
+    };
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
@@ -41,7 +46,7 @@ exports.protect = async (req, res, next) => {
 
 /**
  * Chặn theo vai trò. Dùng sau protect.
- * Ví dụ: router.delete('/:id', protect, requireRole('admin'), deleteRoom);
+ * Ví dụ: router.delete('/:id', protect, requireRole('owner', 'manager'), deleteRoom);
  */
 exports.requireRole = (...roles) => (req, res, next) => {
   if (!req.user) {

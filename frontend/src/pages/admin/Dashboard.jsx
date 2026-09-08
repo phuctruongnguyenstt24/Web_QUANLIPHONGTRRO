@@ -28,7 +28,7 @@ export default function Dashboard() {
         // Gọi song song cho nhanh
         const [roomRes, userRes] = await Promise.all([
           api.get('/rooms'),
-          api.get('/users', { params: { status: 'pending', role: 'tenant' } }),
+          api.get('/users', { params: { status: 'pending' } }),
         ]);
         if (ignore) return;
 

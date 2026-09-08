@@ -131,9 +131,9 @@ function getErrorMessage(err) {
 
 // Sau khi đăng nhập, đưa người dùng về đúng khu vực theo vai trò server trả về
 function homePathFor(role) {
-  return role === ROLES.ADMIN ? "/admin" : "/toi";
+  // owner và manager dùng chung khu quản trị
+  return role === ROLES.OWNER || role === ROLES.MANAGER ? '/admin' : '/toi';
 }
-
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -166,13 +166,12 @@ export default function Login() {
   function handleAuthSuccess(data) {
     const { token, user } = data;
     login(token, user);
+
     const intended = location.state?.from?.pathname;
     const home = homePathFor(user.role);
-    const allowed =
-      intended &&
-      (user.role === ROLES.ADMIN
-        ? intended.startsWith("/admin")
-        : intended.startsWith("/toi"));
+    // Chỉ quay lại trang cũ nếu nó nằm trong khu vực người này được vào
+    const allowed = intended && intended.startsWith(home);
+
     navigate(allowed ? intended : home, { replace: true });
   }
 

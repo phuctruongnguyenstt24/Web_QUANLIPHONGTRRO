@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, ROLE_LABELS } from '../../context/AuthContext';
 import api from '../../services/api';
 import {
   inputClass,
@@ -24,7 +24,7 @@ function toDateInput(value) {
 
 export default function Profile() {
   const { user: authUser, isAdmin, login, token } = useAuth();
-
+  const { role, isStaff } = useAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -177,7 +177,7 @@ export default function Profile() {
               : 'border-moss/30 bg-moss/15 text-moss'
           }`}
         >
-          {isAdmin ? 'Chủ trọ' : 'Người thuê'}
+          <span>{ROLE_LABELS[role]}</span>
         </span>
       </div>
 
@@ -290,7 +290,7 @@ export default function Profile() {
               <div>
                 <dt className="text-[13px] text-slate-ink">Vai trò</dt>
                 <dd className="m-0 mt-0.5 font-medium text-navy">
-                  {isAdmin ? 'Chủ trọ' : 'Người thuê'}
+                 <span>{ROLE_LABELS[role]}</span>
                 </dd>
               </div>
 

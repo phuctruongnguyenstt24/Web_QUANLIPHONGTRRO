@@ -81,7 +81,7 @@ async function run() {
     console.log('Đã kết nối MongoDB\n');
 
     // Đã có admin thì dừng lại, tránh vô tình tạo trùng
-    const existingAdmin = await User.findOne({ role: 'admin' });
+    const existingAdmin = await User.findOne({ role: 'owner' });
     if (existingAdmin && !force) {
       console.log(`Hệ thống đã có tài khoản admin: ${existingAdmin.email || existingAdmin.phone}`);
       console.log('Muốn tạo thêm admin, chạy lại với: node seedAdmin.js --force');
@@ -132,7 +132,7 @@ async function run() {
       email: email ? email.toLowerCase() : undefined,
       phone: phone || undefined,
       password,
-      role: 'admin',
+      role: 'owner',
       authProvider: 'local',
       status: 'approved',      // thêm dòng này
       approvedAt: new Date(),  // và dòng này

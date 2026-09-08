@@ -14,13 +14,13 @@ export default function ProtectedRoute({ children, allowedRoles }) {
 
   if (allowedRoles && !allowedRoles.includes(role)) {
     const home = HOME_PATH[role];
-    // Không có home hợp lệ (role lạ) hoặc đang ở chính home -> hiện thông báo,
-    // tuyệt đối không điều hướng tiếp để tránh lặp vô hạn.
+    // Không điều hướng nếu đã ở đúng khu vực của mình — tránh lặp vô hạn
+    // khi manager vào trang chỉ dành cho owner (cả hai cùng ở /admin).
     if (!home || location.pathname.startsWith(home)) {
       return (
         <div className="p-10 text-center">
           <h2 className="mb-2 font-display text-xl">Không có quyền truy cập</h2>
-          <p className="text-slate-ink">Tài khoản của bạn không được phép vào khu vực này.</p>
+          <p className="text-slate-ink">Chức năng này chỉ dành cho chủ hệ thống.</p>
         </div>
       );
     }
